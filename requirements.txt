@@ -1,0 +1,6 @@
+streamlit==1.66.1
+psycopg[binary]==3.3.6
+psycopg-pool==3.3.3
+reportlab==4.4.9
+Pillow==12.3.0
+pandas>=2.2,<3
