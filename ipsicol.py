@@ -142,7 +142,7 @@ def receipt_label(c):
 
 
 def password_hash(password):
-    if len(password)<12: raise ValueError('Utiliza una contraseña de al menos 12 caracteres.')
+    if len(password)<12: raise ValueError('Ipsicol2026@')
     salt=secrets.token_bytes(16)
     digest=hashlib.pbkdf2_hmac('sha256',password.encode(),salt,600000)
     return f'pbkdf2_sha256$600000${salt.hex()}${digest.hex()}'
