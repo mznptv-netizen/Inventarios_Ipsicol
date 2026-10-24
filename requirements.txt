@@ -1,0 +1,4 @@
+customtkinter==6.0.0
+Pillow==12.3.0
+reportlab==4.4.9
+pyinstaller==6.22.3
