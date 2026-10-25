@@ -1,0 +1,122 @@
+name: Compilar INVENTARIOS_IPSICOL para Windows
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'ipsicol.py'
+      - 'requirements.txt'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Ejecutable Windows 64 bits
+    runs-on: windows-2022
+    timeout-minutes: 25
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v6
+
+      - name: Preparar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) {
+            throw 'No se pudo actualizar pip'
+          }
+
+          python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) {
+            throw 'No se pudieron instalar las dependencias'
+          }
+
+      - name: Verificar código e integridad
+        run: |
+          python -m py_compile ipsicol.py
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Error de sintaxis'
+          }
+
+          python ipsicol.py --self-test
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Fallaron las pruebas de integridad'
+          }
+
+      - name: Generar icono de caja de envío
+        run: |
+          python ipsicol.py --export-icons assets
+          if ($LASTEXITCODE -ne 0) {
+            throw 'No se generó el icono'
+          }
+
+      - name: Crear el ejecutable
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name INVENTARIOS_IPSICOL --icon assets/caja_envio.ico --collect-all customtkinter --collect-data reportlab --add-data "assets/caja_envio.ico;." ipsicol.py
+
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Falló PyInstaller'
+          }
+
+          if (!(Test-Path 'dist/INVENTARIOS_IPSICOL.exe')) {
+            throw 'No se encontró el ejecutable'
+          }
+
+      - name: Probar el ejecutable empaquetado
+        run: |
+          $reportPath = Join-Path $env:RUNNER_TEMP 'ipsicol-smoke.json'
+
+          $appProcess = Start-Process `
+            -FilePath '.\dist\INVENTARIOS_IPSICOL.exe' `
+            -ArgumentList @('--smoke-test', '--report', "`"$reportPath`"") `
+            -PassThru
+
+          if (!$appProcess.WaitForExit(90000)) {
+            $appProcess.Kill()
+            throw 'La prueba del ejecutable superó 90 segundos'
+          }
+
+          if ($appProcess.ExitCode -ne 0) {
+            throw 'El ejecutable terminó con un error'
+          }
+
+          if (!(Test-Path $reportPath)) {
+            throw 'El ejecutable no generó el informe de prueba'
+          }
+
+          $result = Get-Content $reportPath -Raw | ConvertFrom-Json
+
+          if (!$result.ok -or !$result.pdf -or !$result.sqlite -or !$result.gui) {
+            throw 'La prueba no se completó'
+          }
+
+          Get-FileHash '.\dist\INVENTARIOS_IPSICOL.exe' -Algorithm SHA256 |
+            Format-List
+
+      - name: Publicar ejecutable para descargar
+        uses: actions/upload-artifact@v6
+        with:
+          name: INVENTARIOS_IPSICOL-Windows-x64
+          path: dist/INVENTARIOS_IPSICOL.exe
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
